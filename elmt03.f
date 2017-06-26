@@ -58,7 +58,7 @@ c     define parameter for ferro and electric variables
       
       real*8  eps0pol(2)
       
-      real*8 pol(2),gradpol(4),pol0
+      real*8 pol(2),gradpol(4),pol0,a(8),G11,G12,G44
       
       go to(1,2,3,3,2,3,2,3,2,2,2,2,3,3,3), isw
       return
@@ -84,6 +84,19 @@ c     define parameter for ferro and electric variables
       d31=d(10)
       d33=d(11)
       d51=d(12)
+      call dinput(d(13),3)
+      G11=d(13)
+      G12=d(14)
+      G44=d(15)
+      call dinput(d(16),8)
+      a(1)=d(16)
+      a(2)=d(17)
+      a(3)=d(18)
+      a(4)=d(19)
+      a(5)=d(20)
+      a(6)=d(21)
+      a(7)=d(22)
+      a(8)=d(23)
       
       d(189) = 1.d0
       
@@ -111,6 +124,17 @@ c     define parameter for ferro and electric variables
       d31=d(10)
       d33=d(11)
       d51=d(12)
+      G11=d(13)
+      G12=d(14)
+      G44=d(15)
+      a(1)=d(16)
+      a(2)=d(17)
+      a(3)=d(18)
+      a(4)=d(19)
+      a(5)=d(20)
+      a(6)=d(21)
+      a(7)=d(22)
+      a(8)=d(23)
             
       cc=0.d0
       cc(1,1)=E/(1+mu)/(1-2*mu)*(1-mu)
@@ -175,7 +199,9 @@ c     define parameter for ferro and electric variables
 
         pol0=1.d0
         
-        call b33_to_bbb06(b31,b33,b51,pol,pol0,bbb)
+        call b33_to_bbb03(b31,b33,b51,pol,pol0,bbb)
+        print*,b31,bbb
+        
 
                 
         do i=1,3
@@ -193,6 +219,7 @@ c     define parameter for ferro and electric variables
            Dfield(i)=Dfield(i)+bbb(i,j)*eps(j)
           enddo
         enddo
+        
         
         if (mod(isw,3).eq.0) then
           do iInd=1,nel
@@ -352,7 +379,7 @@ c           Kuu
 
           end subroutine d33_to_b33_2d03
           
-         subroutine b33_to_bbb06(b31,b33,b51,pol,pol0,bbb)
+         subroutine b33_to_bbb03(b31,b33,b51,pol,pol0,bbb)
          real*8,intent(in):: b31,b33,b51,pol(2),pol0
          real*8,intent(out):: bbb(2,3)
          
@@ -411,5 +438,5 @@ c           Kuu
            
        endif   
 
-         end subroutine b33_to_bbb06
+         end subroutine b33_to_bbb03
       
