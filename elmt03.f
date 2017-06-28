@@ -334,8 +334,8 @@ c     define parameter for ferro and electric variables
      x+   G11*shp2(1,iInd,gpInd)*shp2(1,iInd,gpInd)*cxsj
      x+ 2*G44*shp2(2,iInd,gpInd)*shp2(2,iInd,gpInd)*cxsj
      
-              s((iInd-1)*ndf+1,(jInd-1)*ndf+1)
-     x   =    s((iInd-1)*ndf+1,(jInd-1)*ndf+1)  
+              s((iInd-1)*ndf+2,(jInd-1)*ndf+2)
+     x   =    s((iInd-1)*ndf+2,(jInd-1)*ndf+2)  
      x+   G11*shp2(2,iInd,gpInd)*shp2(2,iInd,gpInd)*cxsj
      x+ 2*G44*shp2(1,iInd,gpInd)*shp2(1,iInd,gpInd)*cxsj
      
