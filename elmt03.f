@@ -46,7 +46,7 @@ c-----[--.----+----.----+----.-----------------------------------------]
       real*8  Biu(3,2),Bju(3,2)
       real*8  dsigde(3),dsigdu(3,2),ddelde(2),ddeldu(2,2)
       
-      real*8  xsj,cxsj
+      real*8  xsj,cxsj,dxsj
       
       integer i,j,k,gpInd,iInd,jInd,nthreads,i1,j1
       
@@ -58,7 +58,8 @@ c     define parameter for ferro and electric variables
       
       real*8  eps0pol(2)
       
-      real*8 pol(2),gradpol(4),pol0,a(8),G11,G12,G44
+      real*8 pol(2),poldot(2),gradpol(4),pol0,a(8),G11,G12,G44
+      real*8 polqq(2,7),dhsepdp(2),d2hsepdp2(2,2),dhgraddp(2)
       
       go to(1,2,3,3,2,3,2,3,2,2,2,2,3,3,3), isw
       return
@@ -157,6 +158,7 @@ c     define parameter for ferro and electric variables
         call interps2d(gpInd,xl,ix,ndm,nel,.false.)
         xsj = jac(gpInd)
         cxsj = xsj * ctan(1)
+        dxsj = xsj * ctan(2) !damping
         
         sig=0.d0
         eps=0.d0
@@ -166,11 +168,15 @@ c     define parameter for ferro and electric variables
         Dfield=0.d0
         pol=0.d0
         gradpol=0.d0
+        poldot=0.d0
         
         do i=1,nel
         
-          pol(1) = pol(1) + shp2(3,i,gpInd)*ul(1,j,1)
-          pol(2) = pol(2) + shp2(3,i,gpInd)*ul(2,j,1)
+          pol(1) = pol(1) + shp2(3,i,gpInd)*ul(1,i,1)
+          pol(2) = pol(2) + shp2(3,i,gpInd)*ul(2,i,1)
+          
+          poldot(1) = poldot(1) + shp2(3,i,gpInd)*ul(1,i,4)
+          poldot(2) = poldot(2) + shp2(3,i,gpInd)*ul(2,i,4)
           
           Efield(1)=Efield(1)-shp2(1,i,gpInd) * ul(3,i,1)
           Efield(2)=Efield(2)-shp2(2,i,gpInd) * ul(3,i,1)
@@ -189,18 +195,24 @@ c     define parameter for ferro and electric variables
           gradeps(3,2) = gradeps(3,2) + shps2(2,i,gpInd) * ul(4,i,1)
      x                                + shps2(3,i,gpInd) * ul(5,i,1)
           
-          gradpol(1) = gradpol(1) + shp2(1,i,gpInd)*ul(1,j,1)
-          gradpol(2) = gradpol(2) + shp2(2,i,gpInd)*ul(2,j,1)
-          gradpol(3) = gradpol(3) + shp2(2,i,gpInd)*ul(1,j,1)
-          gradpol(4) = gradpol(4) + shp2(1,i,gpInd)*ul(2,j,1)
+          gradpol(1) = gradpol(1) + shp2(1,i,gpInd)*ul(1,i,1)
+          gradpol(2) = gradpol(2) + shp2(2,i,gpInd)*ul(2,i,1)
+          gradpol(3) = gradpol(3) + shp2(2,i,gpInd)*ul(1,i,1)
+          gradpol(4) = gradpol(4) + shp2(1,i,gpInd)*ul(2,i,1)
 
         enddo
+        
+        do i=1,2
+        do j=1,7
+          polqq(i,j)=pol(i)**REAL(j)
+        end do 
+        end do
         
 
         pol0=1.d0
         
         call b33_to_bbb03(b31,b33,b51,pol,pol0,bbb)
-        print*,b31,bbb
+
         
 
                 
@@ -230,15 +242,27 @@ c     define parameter for ferro and electric variables
           Biu(3,1)=shp2(2,iInd,gpInd)
           Biu(3,2)=shp2(1,iInd,gpInd)
           
-!           Btc=0.d0
-!           
-!           do i=1,2
-!           do j=1,3
-!             do k=1,3
-!           Btc(i,j)=Btc(i,j)+Biu(k,i)*cc(k,j)
-!           enddo
-!           enddo
-!           enddo
+           
+        call dhsepdp03(polqq,a,dhsepdp,d2hsepdp2)
+!       11 22 21 12  
+!   grad 1  2  3  4
+        dhgraddp(1)=
+     x  G11*gradpol(1)*shp2(1,iInd,gpInd)+
+     x  2*G44*gradpol(4)*shp2(2,iInd,gpInd)
+     
+        dhgraddp(2)=
+     x  2*G44*gradpol(3)*shp2(1,iInd,gpInd)+
+     x  G11*gradpol(2)*shp2(2,iInd,gpInd)
+     
+        
+           do i1=1,2
+           p((iInd-1)*ndf+i1)  =   p((iInd-1)*ndf+i1)
+     x  -1.d0/alpha*shp2(3,iInd,gpInd)*poldot(i1)*xsj    !pdot
+     x  -shp2(3,iInd,gpInd)*dhsepdp(i1)*xsj     !dHsep/dp
+     x  +shp2(3,iInd,gpInd)*Efield(i1)*xsj      !EP
+     x  -dhgraddp(i1)*xsj 
+           enddo
+          
           
           do k=1,2
            p((iInd-1)*ndf+3) =   p((iInd-1)*ndf+3)
@@ -286,6 +310,50 @@ c     define parameter for ferro and electric variables
                end do
             end do  
            
+          
+!           Kpp Dpp
+         
+
+           do k=1,2
+               s((iInd-1)*ndf+k,(jInd-1)*ndf+k)
+     x   =     s((iInd-1)*ndf+k,(jInd-1)*ndf+k)
+     x     +  1.d0/alpha*shp2(3,iInd,gpInd)*shp2(3,jInd,gpInd)*dxsj
+           enddo
+          
+          do i1=1,2
+            do j1=1,2
+               s((iInd-1)*ndf+i1,(jInd-1)*ndf+j1)
+     x   =     s((iInd-1)*ndf+i1,(jInd-1)*ndf+j1)
+     x     +   d2hsepdp2(i1,j1)*
+     x         shp2(3,iInd,gpInd)*shp2(3,jInd,gpInd)*cxsj
+           enddo
+         enddo
+            
+              s((iInd-1)*ndf+1,(jInd-1)*ndf+1)
+     x   =    s((iInd-1)*ndf+1,(jInd-1)*ndf+1)  
+     x+   G11*shp2(1,iInd,gpInd)*shp2(1,iInd,gpInd)*cxsj
+     x+ 2*G44*shp2(2,iInd,gpInd)*shp2(2,iInd,gpInd)*cxsj
+     
+              s((iInd-1)*ndf+1,(jInd-1)*ndf+1)
+     x   =    s((iInd-1)*ndf+1,(jInd-1)*ndf+1)  
+     x+   G11*shp2(2,iInd,gpInd)*shp2(2,iInd,gpInd)*cxsj
+     x+ 2*G44*shp2(1,iInd,gpInd)*shp2(1,iInd,gpInd)*cxsj
+     
+!             Kpe
+            do i1=1,2
+              s((iInd-1)*ndf+i1,(jInd-1)*ndf+3)
+     x   =    s((iInd-1)*ndf+i1,(jInd-1)*ndf+3)
+     x       +shp2(i1,jInd,gpInd)*shp2(3,iInd,gpInd)*cxsj
+            enddo
+            
+!             Kep
+            do i1=1,2
+              s((iInd-1)*ndf+3,(jInd-1)*ndf+i1)
+     x   =    s((iInd-1)*ndf+3,(jInd-1)*ndf+i1)
+     x       +shp2(i1,iInd,gpInd)*shp2(3,jInd,gpInd)*cxsj
+            enddo
+            
+          
           
 c           Kuu
           do i1=1,2
@@ -437,6 +505,60 @@ c           Kuu
        bbb=0.d0
            
        endif   
-
          end subroutine b33_to_bbb03
+         
+       subroutine dhsepdp03(polqq,a,dhsepdp,d2hsepdp2)
+        real*8,intent(in):: polqq(2,7),a(8)
+        real*8,intent(out):: dhsepdp(2),d2hsepdp2(2,2)
+c       calculate Hsep 1st and 2nd derivative irt P
+        
+        dhsepdp(1)=
+     x   2*a(1)*polqq(1,1)
+     x+4*a(2)*polqq(1,3)
+     x+2*a(3)*polqq(1,1)*polqq(2,2)
+     x+6*a(4)*polqq(1,5)
+     x+a(5)*(2*polqq(1,1)*polqq(2,4)+4*polqq(2,2)*polqq(1,3))
+     x+8*a(6)*polqq(1,7)
+     x+a(7)*(6*polqq(1,5)*polqq(2,2)+2*polqq(1,1)*polqq(2,6))
+     x+a(8)*4*polqq(1,3)*polqq(2,4)
+     
+       dhsepdp(2)=     
+     x 2*a(1)*polqq(2,1)
+     x+4*a(2)*polqq(2,3)
+     x+2*a(3)*polqq(2,1)*polqq(1,2)
+     x+6*a(4)*polqq(2,5)
+     x+a(5)*(2*polqq(2,1)*polqq(1,4)+4*polqq(1,2)*polqq(2,3))
+     x+8*a(6)*polqq(2,7)
+     x+a(7)*(6*polqq(2,5)*polqq(1,2)+2*polqq(2,1)*polqq(1,6))
+     x+a(8)*4*polqq(2,3)*polqq(1,4)
+     
+        d2hsepdp2(1,1)=
+     x 2*a(1)
+     x+4*3*a(2)*polqq(1,2)
+     x+2*a(3)*polqq(2,2)
+     x+6*5*a(4)*polqq(1,4)
+     x+a(5)*(2*polqq(2,4)+4*3*polqq(2,2)*polqq(1,2))
+     x+8*7*a(6)*polqq(1,6)
+     x+a(7)*(6*5*polqq(1,4)*polqq(2,2)+2*polqq(2,6))
+     x+a(8)*4*3*polqq(1,2)*polqq(2,4)
+     
+        d2hsepdp2(2,2)=
+     x   2*a(1)
+     x+4*3*a(2)*polqq(2,2)
+     x+2*a(3)*polqq(1,2)
+     x+6*5*a(4)*polqq(2,4)
+     x+a(5)*(2*polqq(1,4)+4*3*polqq(1,2)*polqq(2,2))
+     x+8*7*a(6)*polqq(2,6)
+     x+a(7)*(6*5*polqq(2,4)*polqq(1,2)+2*polqq(1,6))
+     x+a(8)*4*3*polqq(2,2)*polqq(1,4)
       
+      d2hsepdp2(1,2)=
+     x 2*a(3)*2*polqq(1,1)*polqq(2,1)
+     x+a(5)*(2*4*polqq(1,1)*polqq(2,3)+4*2*polqq(2,1)*polqq(1,3))
+     x+a(7)*(6*2*polqq(1,5)*polqq(2,1)+2*6*polqq(1,1)*polqq(2,5))
+     x+a(8)*4*4*polqq(1,3)*polqq(2,3)
+     
+      d2hsepdp2(2,1)=d2hsepdp2(1,2)
+      
+      
+       end subroutine dhsepdp03
